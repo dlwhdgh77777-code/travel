@@ -106,8 +106,16 @@ def generate_reason(name, cat, city):
     else: return f"화려함보다 '진짜 한국인의 삶'에 밀착하고 싶어 하는 N차 방문객에게 최고의 경험을 줍니다."
 
 def generate_proxy_scores(name):
+    # Base randomized proxy score
     seed = int(hashlib.md5(str(name).strip().encode('utf-8')).hexdigest(), 16)
-    return min(99, 70 + (seed % 30))
+    base_score = 70 + (seed % 20)
+    
+    # Target Preference Weighting (+10 points for Japanese 2030s Women Trends)
+    target_keywords = ['베이커리', '다이닝', '라운지', '디저트', '제과', '로스터', '바', '가든', '브런치', '공방', '살롱', '오션뷰', '당', '관', '옥', '가']
+    n_str = str(name).replace(" ", "")
+    bonus = 10 if any(kw in n_str for kw in target_keywords) else 0
+    
+    return min(99, base_score + bonus)
 
 @st.cache_data
 def get_recommendations(target_sido):
@@ -180,8 +188,13 @@ def load_all_kdrama():
     return pd.DataFrame()
 
 # Shared Target Logic
-target_city = st.selectbox("📌 맵핑 지역 상세 선택 (이곳에서 지역을 변경하면 아래의 모든 매칭 제안이 동기화됩니다):", ['포항 (경북)', '순천 (전남)', '강릉 (강원)', '속초 (강원)', '통영 (경남)', '거제 (경남)', '전주 (전북)', '여수 (전남)', '목포 (전남)', '경주 (경북)', '안동 (경북)', '제주 (제주)', '부산 (부산)'], index=0)
-search_city = target_city.split(' ')[0]
+blue_ocean_cities = ['부산 (부산)', '포항 (경북)', '강릉 (강원)', '제주 (제주)', '경주 (경북)', '속초 (강원)', '여수 (전남)', '전주 (전북)', '순천 (전남)', '통영 (경남)', '거제 (경남)', '목포 (전남)', '안동 (경북)']
+target_cities = st.multiselect(
+    "📌 맵핑 지역 복수 선택 (블루오션 유망도 랭킹 순 정렬 기준):", 
+    blue_ocean_cities, 
+    default=['부산 (부산)']
+)
+search_cities = [tc.split(' ')[0] for tc in target_cities]
 st.markdown("---")
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 1. 거시적 수요 진단 (KPI)", "📍 2. 데이터 교차 매트릭스", "🎯 3. 타겟 핫플 코스 제안", "🗺️ 4. 로컬 통합 시각화 맵"])
@@ -222,86 +235,109 @@ with tab2:
                      title="로컬 힙 잠재력 산점도 (Bubble Size: 카페 인프라 강도)", height=500)
     fig.update_traces(textposition='top center')
     st.plotly_chart(fig, use_container_width=True)
-    st.success("🏆 '부산', '경남', '강원', '경북' 등은 카페 인프라가 훌륭하여 블루오션 가치가 높습니다.")
+    st.success("🏆 '부산', '경남(포항)', '강원(강릉)' 등은 카페 인프라가 훌륭하여 블루오션 가치가 높습니다.")
 
-with st.spinner("데이터 분석 및 매칭 중..."):
-    df_target = get_recommendations(search_city)
-    df_k = load_all_kdrama()
+with st.spinner("데이터 분석 및 다중 매칭 중..."):
+    df_foods_list, df_cafes_list, df_k_list = [], [], []
+    df_k_all = load_all_kdrama()
     
-    df_foods, df_cafes, df_k_top5 = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-    
-    if not df_target.empty:
-        df_all_cafes = df_target[df_target['카테고리'].str.contains('카페', na=False)]
-        df_all_foods = df_target[~df_target['카테고리'].str.contains('카페', na=False)]
-        
-        diverse_foods = df_all_foods.drop_duplicates(subset=['카테고리'], keep='first')
-        if len(diverse_foods) < 5: df_foods = pd.concat([diverse_foods, df_all_foods[~df_all_foods['사업장명'].isin(diverse_foods['사업장명'])]]).head(5)
-        else: df_foods = diverse_foods.head(5)
+    for search_city, target_city in zip(search_cities, target_cities):
+        df_target = get_recommendations(search_city)
+        if df_target is not None and not df_target.empty:
+            df_all_cafes = df_target[df_target['카테고리'].str.contains('카페', na=False)]
+            df_all_foods = df_target[~df_target['카테고리'].str.contains('카페', na=False)]
             
-        df_cafes = df_all_cafes.head(5)
-        
-    if not df_k.empty:
-        df_k_target = df_k[df_k['ADDR'].astype(str).str.contains(search_city) | df_k['SIGNGU_NM'].astype(str).str.contains(search_city)].copy()
-        df_k_top5 = df_k_target.drop_duplicates(subset=['TRRSRT_NM']).head(5)
+            diverse_foods = df_all_foods.drop_duplicates(subset=['카테고리'], keep='first')
+            if len(diverse_foods) < 5: 
+                df_f = pd.concat([diverse_foods, df_all_foods[~df_all_foods['사업장명'].isin(diverse_foods['사업장명'])]]).head(5)
+            else: df_f = diverse_foods.head(5)
+                
+            df_c = df_all_cafes.head(5)
+            
+            df_f = df_f.copy()
+            df_f['TargetCity'] = target_city
+            df_c = df_c.copy()
+            df_c['TargetCity'] = target_city
+            
+            df_foods_list.append(df_f)
+            df_cafes_list.append(df_c)
+            
+        if not df_k_all.empty:
+            df_k_target = df_k_all[df_k_all['ADDR'].astype(str).str.contains(search_city) | df_k_all['SIGNGU_NM'].astype(str).str.contains(search_city)].copy()
+            df_k_top5 = df_k_target.drop_duplicates(subset=['TRRSRT_NM']).head(5).copy()
+            if not df_k_top5.empty:
+                df_k_top5['TargetCity'] = target_city
+                df_k_list.append(df_k_top5)
+
+    df_foods = pd.concat(df_foods_list, ignore_index=True) if df_foods_list else pd.DataFrame()
+    df_cafes = pd.concat(df_cafes_list, ignore_index=True) if df_cafes_list else pd.DataFrame()
+    df_k_top5 = pd.concat(df_k_list, ignore_index=True) if df_k_list else pd.DataFrame()
 
 with tab3:
-    st.subheader("3. 로컬 힙(Local Hip) 핫플 핀셋 매칭 (텍스트 전용)")
+    st.subheader("3. 로컬 힙(Local Hip) 다중 핫플 코스 제안 (텍스트 전용)")
     
-    st.markdown(f"### 🎬 {target_city} K-Drama 성지 / 관광 명소 TOP 5")
+    cities_str = ", ".join(target_cities) if target_cities else "선택된 지역 없음"
+    st.markdown(f"### 🎬 {cities_str} K-Drama 성지 / 관광 명소 통합 TOP 5")
     if not df_k_top5.empty:
         for i, row in df_k_top5.iterrows():
-            with st.expander(f"📸 핫플 명소: {row['TRRSRT_NM']} ({row['PLACE_TY']})"):
+            with st.expander(f"📸 [{row['TargetCity']}] 핫플 명소: {row['TRRSRT_NM']} ({row['PLACE_TY']})"):
                 st.markdown(f"**📌 주소:** {row['ADDR']}")
                 st.markdown(f"**💬 K-Drama 버즈량:** {row['SNS언급량']}회")
     else: st.info("매칭된 데이터가 없습니다.")
 
-    st.markdown(f"### 🍽️ {target_city} 로컬 맛집 TOP 5 풀 리스트 (카테고리 다변화)")
+    st.markdown(f"### 🍽️ {cities_str} 로컬 맛집 통합 풀 리스트 (카테고리 다변화)")
     if not df_foods.empty:
         for i, row in df_foods.iterrows():
-            with st.expander(f"🏅 맛집 추천: {row['사업장명']} ({row['카테고리']})"):
+            with st.expander(f"🏅 [{row['TargetCity']}] {row['사업장명']} ({row['카테고리']})"):
                 st.markdown(f"**📌 주소:** {row['주소']}")
                 st.markdown(f"**💬 선정 이유:** {row['선정이유']}")
     else: st.info("매칭된 데이터가 없습니다.")
 
-    st.markdown(f"### ☕ {target_city} 로컬 인스타 감성 카페 TOP 5")
+    st.markdown(f"### ☕ {cities_str} 로컬 인스타 감성 카페 통합 리스트")
     if not df_cafes.empty:
         for i, row in df_cafes.iterrows():
-            with st.expander(f"🏅 카페 추천: {row['사업장명']}"):
+            with st.expander(f"🏅 [{row['TargetCity']}] {row['사업장명']}"):
                 st.markdown(f"**📌 주소:** {row['주소']}")
                 st.markdown(f"**💬 선정 이유:** {row['선정이유']}")
     else: st.info("매칭된 데이터가 없습니다.")
 
 with tab4:
-    st.subheader(f"🗺️ 4. {target_city} 로컬 통합 시각화 맵")
-    st.markdown("선택한 지역의 관광 명소(K-Drama), 추천 맛집, 추천 카페를 한눈에 볼 수 있는 동선 기획용 맵입니다. \n\n* **빨간색(Red):** 식당 맛집  \n* **파란색(Blue):** 감성 카페  \n* **초록색(Green):** K-Drama 관광명소")
+    cities_str = ", ".join(target_cities) if target_cities else "지역"
+    st.subheader(f"🗺️ 4. {cities_str} 로컬 다중 통합 시각화 맵")
+    st.markdown("선택한 모든 지역의 관광 명소(K-Drama), 추천 맛집, 추천 카페를 한눈에 볼 수 있는 동선 기획용 맵입니다. \n\n* **빨간색(Red):** 식당 맛집  \n* **파란색(Blue):** 감성 카페  \n* **초록색(Green):** K-Drama 관광명소")
     
     map_list = []
     
     if not df_foods.empty:
         for idx, row in df_foods.dropna(subset=['lat', 'lon']).iterrows():
-            map_list.append({'이름': row['사업장명'], 'latitude': row['lat'], 'longitude': row['lon'], 'color': '#FF0000', 'type': '맛집'})
+            map_list.append({'이름': row['사업장명'], 'latitude': row['lat'], 'longitude': row['lon'], 'color': '#FF0000', 'type': '맛집', 'TargetCity': row['TargetCity']})
             
     if not df_cafes.empty:
         for idx, row in df_cafes.dropna(subset=['lat', 'lon']).iterrows():
-            map_list.append({'이름': row['사업장명'], 'latitude': row['lat'], 'longitude': row['lon'], 'color': '#0000FF', 'type': '카페'})
+            map_list.append({'이름': row['사업장명'], 'latitude': row['lat'], 'longitude': row['lon'], 'color': '#0000FF', 'type': '카페', 'TargetCity': row['TargetCity']})
             
     if not df_k_top5.empty:
         for idx, row in df_k_top5.dropna(subset=['LC_LA', 'LC_LO']).iterrows():
-            map_list.append({'이름': row['TRRSRT_NM'], 'latitude': row['LC_LA'], 'longitude': row['LC_LO'], 'color': '#00FF00', 'type': 'K-Drama 명소'})
+            map_list.append({'이름': row['TRRSRT_NM'], 'latitude': row['LC_LA'], 'longitude': row['LC_LO'], 'color': '#00FF00', 'type': 'K-Drama 명소', 'TargetCity': row['TargetCity']})
             
     df_map = pd.DataFrame(map_list)
-    if not df_map.empty:
-        # Outlier removal: Force Map to zoom only on the dense matching region
-        med_lat = df_map['latitude'].median()
-        med_lon = df_map['longitude'].median()
-        df_map = df_map[
-            (df_map['latitude'] >= med_lat - 0.25) & (df_map['latitude'] <= med_lat + 0.25) &
-            (df_map['longitude'] >= med_lon - 0.25) & (df_map['longitude'] <= med_lon + 0.25)
-        ]
+    if not df_map.empty and 'TargetCity' in df_map.columns:
+        valid_map_frames = []
+        # Handle outliers cleanly grouping by city so separate clusters can exist without breaking each other
+        for city, group in df_map.groupby('TargetCity'):
+            med_lat = group['latitude'].median()
+            med_lon = group['longitude'].median()
+            valid = group[
+                (group['latitude'] >= med_lat - 0.25) & (group['latitude'] <= med_lat + 0.25) &
+                (group['longitude'] >= med_lon - 0.25) & (group['longitude'] <= med_lon + 0.25)
+            ]
+            valid_map_frames.append(valid)
+            
+        final_valid_map = pd.concat(valid_map_frames, ignore_index=True) if valid_map_frames else pd.DataFrame()
         
-        if not df_map.empty:
-            st.map(df_map, latitude='latitude', longitude='longitude', color='color', zoom=11, use_container_width=True)
+        if not final_valid_map.empty:
+            st.map(final_valid_map, latitude='latitude', longitude='longitude', color='color', zoom=None, use_container_width=True)
         else:
-            st.warning("선택하신 지역의 유효한 반경 내 좌표 데이터를 찾지 못했습니다.")
+            st.warning("선택하신 각 지역의 유효한 반경 내 좌표 데이터를 찾지 못했습니다.")
     else:
         st.warning("선택하신 지역의 위치 데이터(좌표)를 추출할 수 없어 지도를 생성하지 못했습니다.")
