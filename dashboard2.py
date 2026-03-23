@@ -75,47 +75,53 @@ df_visit = pd.DataFrame(visit_data)
 df_infra['시도_abbr'] = df_infra['시도명'].map(lambda x: sido_map.get(x, x))
 df_matrix = pd.merge(df_infra, df_visit, left_on='시도_abbr', right_on='시도명', suffixes=('_full', ''))
 
-franchise_keywords = ['스타벅스', '이디야', '투썸', '메가커피', '컴포즈', '빽다방', '파스쿠찌', '할리스', '폴바셋', '더벤티', '엔제리너스', '탐앤탐스', '파리바게뜨', '뚜레쥬르', '배스킨라빈스', '던킨', '맥도날드', '롯데리아', '버거킹', '맘스터치', 'KFC', '써브웨이', '아웃백', '빕스', '애슐리', '홍콩반점', '롤링파스타', '김밥천국', '고봉민', '신전', '죠스', '엽기떡볶이', '본죽', '비비큐', '교촌', 'BHC', '굽네', '60계', '노랑통닭', '블루보틀', '설빙', '공차', '매머드', '더리터', '요거프레소', '이삭토스트', '백종원', '파파존스', '도미노', '피자헛']
+franchise_keywords = ['스타벅스', '이디야', '투썸', '메가커피', '컴포즈', '빽다방', '파스쿠찌', '할리스', '폴바셋', '더벤티', '엔제리너스', '탐앤탐스', '파리바게뜨', '뚜레쥬르', '배스킨라빈스', '던킨', '맥도날드', '롯데리아', '버거킹', '맘스터치', 'KFC', '써브웨이', '아웃백', '빕스', '애슐리', '홍콩반점', '롤링파스타', '김밥천국', '고봉민', '신전', '죠스', '엽기떡볶이', '본죽', '비비큐', '교촌', 'BHC', '굽네', '60계', '노랑통닭', '블루보틀', '설빙', '공차', '매머드', '더리터', '요거프레소', '이삭토스트', '백종원', '파파존스', '도미노', '피자헛', '하남돼지', '명륜진사', '새마을식당', '지코바', '이차돌', '팔각도', '한솥', '역전할머니', '투다리', '크라운호프', '청년다방', '명랑핫', '두찜', '김가네', '얌샘', '얌스']
+
+bad_keywords = ['당구', 'PC', '피시', '노래', '단란', '주점', '유흥', '골프', '스크린', '뽑기', '복권', '다트', '보드게임', '모텔', '출장', '장례', '구내식당', '요양', '학원', '어린이집', '독서실', '부동산', '휴게소', '장어', '추어탕', '보신탕', '마사지', '피부', '미용', '공인중개']
 
 def is_franchise(n):
-    n_str = str(n).replace(" ","")
-    for b in franchise_keywords:
-        if b in n_str: return True
+    n_str = str(n).replace(" ","").upper()
+    for b in franchise_keywords + bad_keywords:
+        if b.upper() in n_str: return True
     if n_str.endswith('점') and not n_str.endswith('본점') and not n_str.endswith('전문점') and not n_str.endswith('음식점'): return True
     return False
 
 def guess_food_type(name, raw_cat=None):
     c = str(raw_cat).replace(' ', '') if pd.notna(raw_cat) else ""
     n = str(name).replace(' ', '') if pd.notna(name) else ""
+    if any(k in n for k in ['커피', '카페', '제과', '빵', '베이커리', '다방', '라운지', '로스터', '로스터리', '에스프레소', '마카롱', '디저트', '케이크', '구움과자', '샌드위치', '찻집', '티룸', '티하우스', '젤라또', '크로플', '도넛', '도낫']): return "☕ 카페/디저트"
+    if any(k in c for k in ['다방', '카페', '커피', '제과', '전통차']): return "☕ 카페/디저트"
     if any(k in c for k in ['중국식', '중식', '중화', '마라']): return "🍜 중식/마라"
-    if any(k in c for k in ['일식', '생선회', '횟집', '동남아']): return "🐟 해산물/일식"
-    if any(k in c for k in ['커피', '제과', '다방', '카페', '찻집', '전통차']): return "☕ 카페/디저트"
-    if any(k in n for k in ['카페', '커피', '제과', '빵', '베이커리', '다방', '라운지', '로스터', '찻집', '티룸', '티하우스']): return "☕ 카페/디저트"
-    if any(k in n for k in ['피자', '파스타', '레스토랑', '양식']): return "🍝 양식/패스트푸드"
-    if any(k in n for k in ['고기', '갈비', '삼겹', '한우', '막창', '식육', '곱창']): return "🥩 육류 (고기)"
-    if any(k in n for k in ['회', '수산', '바다', '초밥', '스시']): return "🐟 해산물/일식"
-    if any(k in n for k in ['국수', '밀면', '냉면', '칼국수', '모밀', '면옥']): return "🥢 면요리"
-    return "🍚 한식 (로컬 백반/다이닝)"
+    if any(k in c for k in ['일식', '생선회', '횟집', '참치']): return "🐟 해산물/일식"
+    if any(k in n for k in ['피자', '파스타', '레스토랑', '양식', '비스트로', '브런치', '이탈리안', '프렌치', '다이닝', '스테이크']): return "🍝 양식/패스트푸드"
+    if any(k in n for k in ['고기', '갈비', '삼겹', '한우', '막창', '식육', '곱창', '대창', '화로', '바베큐', '우대']): return "🥩 K-바베큐 (고기)"
+    if any(k in n for k in ['회', '수산', '바다', '초밥', '스시', '해물', '조개', '게장', '대게', '어시장']): return "🐟 해산물/일식"
+    if any(k in n for k in ['국수', '밀면', '냉면', '칼국수', '모밀', '면옥', '우동', '소바', '라멘', '짬뽕', '막국수']): return "🥢 면요리"
+    if '가든' in n or '정육' in n: return "🥩 K-바베큐 (고기)"
+    return "🍚 모던 로컬 한식"
 
 def generate_reason(name, cat, city):
-    n, c = str(name), str(cat)
-    if '카페' in c:
-        return f"프랜차이즈에선 느낄 수 없는 {city} 고유의 감성 카페. '#韓国カフェ巡り'를 외치는 일본 2030의 니즈와 완벽히 맞아떨어집니다."
+    c = str(cat)
+    if '카페' in c: return f"프랜차이즈에선 느낄 수 없는 {city} 고유의 감성. '#韓国カフェ巡り'를 외치는 일본 2030의 니즈 완벽 충족."
     elif '해산물' in c: return f"{city}의 지리적 매력을 직관적으로 보여주는 로컬 해산물 명소."
-    elif '육류' in c: return f"K-바베큐의 진수. '나만 아는 현지인 로컬 맛집'으로 인스타 스토리에 자랑하기 좋습니다."
-    else: return f"화려함보다 '진짜 한국인의 삶'에 밀착하고 싶어 하는 N차 방문객에게 최고의 경험을 줍니다."
+    elif '바베큐' in c: return f"K-바베큐의 진수. '나만 아는 현지인 로컬 핫플'로 인스타 릴스 스토리에 최적화."
+    elif '양식' in c: return f"로컬 식재료를 재해석한 다이닝. 트렌디한 분위기로 인증샷에 열광하는 2030 타겟팅 적중."
+    else: return f"화려한 서울을 벗어나 '진짜 한국인의 삶'에 밀착하고 싶어 하는 N차 방문객에게 최고의 미식 경험 제공."
 
 def generate_proxy_scores(name):
     # Base randomized proxy score
     seed = int(hashlib.md5(str(name).strip().encode('utf-8')).hexdigest(), 16)
-    base_score = 70 + (seed % 20)
+    base_score = 50 + (seed % 30)
     
-    # Target Preference Weighting (+10 points for Japanese 2030s Women Trends)
-    target_keywords = ['베이커리', '다이닝', '라운지', '디저트', '제과', '로스터', '바', '가든', '브런치', '공방', '살롱', '오션뷰', '당', '관', '옥', '가']
+    # Target Preference Weighting (+40 points for Japanese 2030s Women Trends)
+    target_keywords = ['베이커리', '다이닝', '라운지', '디저트', '제과', '로스터', '로스터리', '이탈리안', '브런치', '오션뷰', '당', '관', '옥', '가', '스튜디오', '아뜰리에', '비스트로', '스테이크', '오마카세', '카츠', '솥밥', '정식']
+    penalty_keywords = ['해장국', '기사식당', '호프', '노가리', '아구찜', '동태', '생태', '홍어']
+    
     n_str = str(name).replace(" ", "")
-    bonus = 10 if any(kw in n_str for kw in target_keywords) else 0
+    bonus = 40 if any(kw in n_str for kw in target_keywords) else 0
+    penalty = -50 if any(kw in n_str for kw in penalty_keywords) else 0
     
-    return min(99, base_score + bonus)
+    return min(99, max(1, base_score + bonus + penalty))
 
 @st.cache_data
 def get_recommendations(target_sido):
